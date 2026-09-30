@@ -1,0 +1,1 @@
+{"v":1,"session":"fixture","sequence":7,"received_at_ms":1234,"co2_ppm":650.500,"temperature_c":24.500,"humidity_pct":60.250,"pm1_0":5.100,"pm2_5":8.300,"pm4_0":10.500,"pm10":12.750,"voc_index":100.000,"nox_index":20.000,"origin":"dji","sender_boot":42,"sender_sequence":7,"acquired_uptime_ms":123456,"aircraft_position":null}

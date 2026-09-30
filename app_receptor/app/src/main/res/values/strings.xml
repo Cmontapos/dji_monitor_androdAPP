@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">MicroGas Receptor</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#173D3B</item>
+        <item name="android:navigationBarColor">#173D3B</item>
+    </style>
+</resources>

@@ -1,0 +1,35 @@
+# Android / Gradle: generated files and machine-specific configuration
+.gradle/
+.kotlin/
+.idea/
+**/build/
+local.properties
+*.iml
+.externalNativeBuild/
+.cxx/
+
+# Installers and signing credentials
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local tooling and OS files
+.codex/
+.agents/
+.DS_Store
+Thumbs.db

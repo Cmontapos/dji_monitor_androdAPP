@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@android:color/white" />
+    <foreground>
+        <!-- Keep the full wordmark within circular and rounded launcher masks. -->
+        <inset android:drawable="@drawable/microgas_logo"
+            android:insetLeft="16%" android:insetTop="16%"
+            android:insetRight="16%" android:insetBottom="16%" />
+    </foreground>
+</adaptive-icon>

@@ -1,0 +1,4 @@
+<resources>
+    <usb-accessory manufacturer="DJI" model="T600" />
+    <usb-accessory manufacturer="DJI" model="AG410" />
+</resources>
