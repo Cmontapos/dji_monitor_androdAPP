@@ -9,6 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
@@ -24,8 +27,12 @@ import kotlin.math.*
 
 @Composable
 fun RouteScreen(samples: List<Measurement>, modifier: Modifier = Modifier,
-    selectedKey: Pair<String, Long>? = null, onSelectionChange: (Pair<String, Long>?) -> Unit = {},
+    selectedKey: Pair<String, Long>? = null, home: Measurement? = null,
+    highest: Map<RouteMetric, List<Measurement>> = emptyMap(), onSelectionChange: (Pair<String, Long>?) -> Unit = {},
 ) {
+    var metric by remember { mutableStateOf(RouteMetric.CO2) }
+    var metricsMenu by remember { mutableStateOf(false) }
+    val maxima = highest[metric].orEmpty()
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Ruta y altura", style = MaterialTheme.typography.titleLarge)
@@ -35,7 +42,32 @@ fun RouteScreen(samples: List<Measurement>, modifier: Modifier = Modifier,
                 else "Altura entregada por el dron · referencia pendiente de definir")
             Text("${samples.size} muestras en memoria", style = MaterialTheme.typography.bodySmall)
         }
-        item { RouteMap(samples, selectedKey, onSelectionChange) }
+        item { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box {
+                OutlinedButton(onClick = { metricsMenu = true }) { Text("Máximos: ${metric.label}") }
+                DropdownMenu(expanded = metricsMenu, onDismissRequest = { metricsMenu = false }) {
+                    RouteMetric.entries.forEach { choice ->
+                        DropdownMenuItem(text = { Text(choice.label) }, onClick = { metric = choice; metricsMenu = false })
+                    }
+                }
+            }
+            Text("10 valores más altos de toda la sesión · magenta. En empates se conserva el primero recibido.")
+            Text("Home · verde: primera posición válida recibida; no indica necesariamente el despegue.")
+        }
+        }
+        item { RouteMap(samples, selectedKey, onSelectionChange, home, maxima) }
+        item { Column {
+            Text("Máximos de ${metric.label}", style = MaterialTheme.typography.titleMedium)
+            if (maxima.isEmpty()) Text("Sin valores válidos para esta variable.")
+            maxima.forEachIndexed { index, m ->
+                TextButton(onClick = { onSelectionChange(m.session to m.sequence) }) {
+                    Text("${index + 1}. ${numberLabel(metric.value(m))} · " +
+                        DateTimeFormatter.ofPattern("dd/MM HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(m.receivedAtMs)) +
+                        if (hasRouteFix(m)) "" else " · sin GPS")
+                }
+            }
+        }
+        }
         item { Co2Chart(samples, "Altura (m)", null, interactive = true, sharedSelection = selectedKey, onSelectionChange = onSelectionChange,
             value = { it.altitudeM?.toFloat()?.takeIf { value -> value.isFinite() } }) }
     }
@@ -43,11 +75,13 @@ fun RouteScreen(samples: List<Measurement>, modifier: Modifier = Modifier,
 
 @Composable
 private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>?,
-    onSelectionChange: (Pair<String, Long>?) -> Unit,
+    onSelectionChange: (Pair<String, Long>?) -> Unit, home: Measurement?, maxima: List<Measurement>,
 ) {
     val select by rememberUpdatedState(onSelectionChange)
-    val points = remember(samples) { routePoints(samples) }
-    val valid = points.filterNotNull()
+    val anchor = home ?: samples.firstOrNull(::hasRouteFix)
+    val points = remember(samples, anchor) { routePoints(samples, anchor) }
+    val extra = remember(home, maxima, anchor) { routePoints(listOfNotNull(home) + maxima, anchor).filterNotNull() }
+    val valid = points.filterNotNull() + extra
     val session = samples.lastOrNull()?.session
     var zoom by remember(session) { mutableFloatStateOf(1f) }
     var pan by remember(session) { mutableStateOf(Offset.Zero) }
@@ -64,20 +98,24 @@ private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>
         (width / 2 + (p.east - (bounds[0] + bounds[1]) / 2) * scale).toFloat() + pan.x,
         (height / 2 - (p.north - (bounds[2] + bounds[3]) / 2) * scale).toFloat() + pan.y)
     val screenPoints = points.map { p -> p?.let { it to screen(it) } }
+    val extraPoints = extra.map { it to screen(it) }
+    val selectable = (screenPoints.filterNotNull() + extraPoints).distinctBy { it.first.sample.session to it.first.sample.sequence }
     LaunchedEffect(selectedKey) {
-        val selected = screenPoints.filterNotNull().firstOrNull { (it.first.sample.session to it.first.sample.sequence) == selectedKey }
+        val selected = selectable.firstOrNull { (it.first.sample.session to it.first.sample.sequence) == selectedKey }
         if (selected != null && (selected.second.x !in 0f..width || selected.second.y !in 0f..height)) {
             zoom = 1f; pan = Offset.Zero; frozenBounds = null
         }
     }
-    val currentPoints by rememberUpdatedState(screenPoints)
+    val currentPoints by rememberUpdatedState(selectable)
     val currentBounds by rememberUpdatedState(liveBounds)
     val primary = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outlineVariant
     val selectedColor = MaterialTheme.colorScheme.onSurface
+    val markerColor = Color(0xFFFF59D6)
+    val homeColor = Color(0xFF66DD88)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Recorrido · N ↑", style = MaterialTheme.typography.titleMedium)
+            Text("Latitud ↑ · Longitud →", style = MaterialTheme.typography.titleMedium)
             TextButton(onClick = { zoom = 1f; pan = Offset.Zero; frozenBounds = null; select(null) }) { Text("Recentrar") }
         }
         if (valid.isEmpty()) Text("Sin coordenadas. Conecta MicroGas Simulado o recibe GPS válido del dron.")
@@ -120,11 +158,39 @@ private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>
                         previous = current
                     }
                     screenPoints.lastOrNull()?.let { (_, pos) -> drawCircle(primary, 5.dp.toPx(), pos) }
+                    extraPoints.forEach { (p, pos) ->
+                        if (maxima.any { it.session == p.sample.session && it.sequence == p.sample.sequence })
+                            drawCircle(markerColor, 6.dp.toPx(), pos)
+                        if (home == p.sample) {
+                            val r = 9.dp.toPx()
+                            drawLine(homeColor, pos + Offset(-r, 0f), pos + Offset(0f, -r), 3.dp.toPx())
+                            drawLine(homeColor, pos + Offset(0f, -r), pos + Offset(r, 0f), 3.dp.toPx())
+                            drawRect(homeColor, pos + Offset(-r / 2, 0f), androidx.compose.ui.geometry.Size(r, r), style = Stroke(2.dp.toPx()))
+                        }
+                    }
+                    selectable.firstOrNull { (it.first.sample.session to it.first.sample.sequence) == selectedKey }?.let { (_, pos) ->
+                        drawCircle(selectedColor, 11.dp.toPx(), pos, style = Stroke(2.dp.toPx()))
+                    }
+                    // Inverse of the same local projection and viewport used to draw points.
+                    anchor?.let { origin ->
+                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                            color = selectedColor.toArgb(); textSize = 10.dp.toPx()
+                        }
+                        for (i in 1..3) {
+                            val x = size.width * i / 4
+                            val y = size.height * i / 4
+                            val east = (x - width / 2 - pan.x) / scale + (bounds[0] + bounds[1]) / 2
+                            val north = (height / 2 + pan.y - y) / scale + (bounds[2] + bounds[3]) / 2
+                            val (lat, lon) = routeCoordinate(origin, east, north)
+                            if (lat in -90.0..90.0) drawContext.canvas.nativeCanvas.drawText("${numberLabel(lat, 5)}°", 4.dp.toPx(), y - 4.dp.toPx(), paint)
+                            if (lon != null) drawContext.canvas.nativeCanvas.drawText("${numberLabel(lon, 5)}°", x - 30.dp.toPx(), size.height - 4.dp.toPx(), paint)
+                        }
+                    }
                 }
             }
             Text("Pellizca para ampliar · arrastra en cualquier dirección · toca una muestra", style = MaterialTheme.typography.labelSmall)
         }
-        valid.firstOrNull { selectedKey == (it.sample.session to it.sample.sequence) }?.sample?.let { m ->
+        (samples + listOfNotNull(home) + maxima).firstOrNull { selectedKey == (it.session to it.sequence) }?.let { m ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss.SSS").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(m.receivedAtMs)))

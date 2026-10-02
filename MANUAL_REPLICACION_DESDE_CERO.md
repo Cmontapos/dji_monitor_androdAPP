@@ -1,7 +1,7 @@
 # Manual Completo de Replicación: Sistema MicroGas (Control DJI + App Celular)
 
 **GasLab — Monitoreo de Gases Atmosféricos con Dron DJI Mavic 3T**  
-Revisión documental: 2026-09-29. Receptor declara versionName 0.4.2 y versionCode 6; DJI y Demo siguen en 0.4.1 (5). Demo incluye ruta y altura sintéticas; el receptor incluye la tercera pestaña Ruta y altura.
+Revisión documental: 2026-09-30. Receptor declara versionName 0.4.3 y versionCode 7; DJI y Demo siguen en 0.4.1 (5). Demo incluye ruta y altura sintéticas; el receptor incluye la tercera pestaña Ruta y altura.
 
 Este es el manual principal. Consulta primero la sección de incorporación añadida al final. Los manuales anteriores se conservan en docs/archivo como referencia histórica, no como instrucciones vigentes.
 
@@ -14,7 +14,7 @@ Este es el manual principal. Consulta primero la sección de incorporación aña
 3. [Protocolos de Comunicación y Estructura de Datos](#3-protocolos-de-comunicación-y-estructura-de-datos)
    - 3.1. Pi 5 → Mavic 3T → RC Pro (PSDK v1 de 32 B y v2 de 64 B)
    - 3.2. RC Pro → Celular (Bluetooth Clásico RFCOMM / NDJSON v1)
-   - 3.3. Estructura de Archivos CSV (23 Columnas en Control, 15 Columnas en Celular)
+   - 3.3. Estructura de Archivos CSV (24 Columnas en Control, 16 Columnas en Celular)
    - 3.4. Límites de la validación
 4. [App 1: MicroGas para DJI RC Pro Enterprise (`app_dji`)](#4-app-1-microgas-para-dji-rc-pro-enterprise-app_dji)
    - 4.1. Requisitos y Herramientas de Desarrollo
@@ -38,6 +38,18 @@ Este es el manual principal. Consulta primero la sección de incorporación aña
 10. [Interpretar el registro](#10-comprender-el-registro-antes-de-analizarlo)
 11. [Análisis CSV y mapas](#11-del-csv-a-una-gráfica-y-un-mapa)
 12. [Hardware y desarrollo](#12-incorporar-hardware-y-trabajar-en-el-código)
+13. [Guía de Desarrollo con Android Studio y Extensión de Features](#13-guía-de-desarrollo-con-android-studio-y-extensión-de-features)
+   - 13.1. Cómo funciona Android Studio (Guía paso a paso para quien nunca lo ha usado)
+   - 13.2. Mapa de desarrollo: ¿Qué archivo modifico o creo para cada feature?
+   - 13.3. Compilación automatizada mediante Makefile (`make apks`)
+14. [Receptor 0.4.3: Home, máximos y CSV](#14-receptor-043-home-máximos-y-administración-de-csv)
+15. [Cómo editar menús e interfaz en Android Studio](#15-cómo-editar-menús-e-interfaz-en-android-studio)
+   - 15.1. Orientarse en Android Studio y encontrar el archivo correcto
+   - 15.2. Editar la GUI: botones, diálogos y pestañas (con ejemplos reales)
+   - 15.3. Editar la lógica interna: ViewModel y estado
+   - 15.4. Previsualizar cambios sin instalar en el teléfono
+   - 15.5. Flujo de trabajo recomendado
+
 
 ---
 
@@ -190,17 +202,17 @@ El control ejecuta un servidor RFCOMM con Serial Port Profile (SPP):
 
 ### 3.3. Estructura de Archivos CSV
 
-#### CSV del Control DJI (`app_dji` — 23 Columnas)
+#### CSV del Control DJI (`app_dji` — 24 Columnas)
 El control registra en `files/sessions/` con frecuencia desacoplada de 10 Hz (Zero-Order Hold):
 ```csv
-fecha_hora_utc,co2_ppm,sen66_new_data,sen66_muestra_utc,sen66_secuencia,latitud,longitud,origen,payload_boot,payload_secuencia,payload_uptime_ms,gps_origen,gps_recepcion_utc,gps_edad_al_recibir_co2_ms,gps_nivel_senal,temperatura_c,humedad_pct,pm1_0,pm2_5,pm4_0,pm10,voc_index,nox_index
+fecha_hora_utc,co2_ppm,sen66_new_data,sen66_muestra_utc,sen66_secuencia,latitud,longitud,origen,payload_boot,payload_secuencia,payload_uptime_ms,gps_origen,gps_recepcion_utc,gps_edad_al_recibir_co2_ms,gps_nivel_senal,temperatura_c,humedad_pct,pm1_0,pm2_5,pm4_0,pm10,voc_index,nox_index,altura_m
 ```
 - `sen66_new_data`: `1` si es una muestra nueva que acaba de llegar, `0` si es una fila retenida por el Zero-Order Hold.
 
-#### CSV del Celular Receptor (`app_receptor` — 15 Columnas)
+#### CSV del Celular Receptor (`app_receptor` — 16 Columnas)
 El celular guarda cada muestra física recibida (~1 Hz) y permite exportar mediante Storage Access Framework:
 ```csv
-fecha_hora_utc,co2_ppm,temperatura_c,humedad_pct,latitud,longitud,origin,session,sequence,pm1_0,pm2_5,pm4_0,pm10,voc_index,nox_index
+fecha_hora_utc,co2_ppm,temperatura_c,humedad_pct,latitud,longitud,origin,session,sequence,pm1_0,pm2_5,pm4_0,pm10,voc_index,nox_index,altura_m
 ```
 - Marcas de tiempo en ISO-8601 UTC con milisegundos (`yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`).
 - Punto decimal forzado con `Locale.US`.
@@ -413,6 +425,8 @@ Gradle debe usar Java 17. Android Studio y la terminal pueden tener JDK distinto
 
 La primera sincronización requiere internet para descargar dependencias. `--offline` solo sirve después de tenerlas en caché. Si faltan permisos del wrapper usa `chmod +x gradlew` desde su carpeta. En Windows utiliza `gradlew.bat` y adapta los comandos del shell.
 
+Para configurar la credencial, consulta también el [inicio del README DJI](app_dji/README.md#antes-de-compilar-dji-dónde-colocar-la-app-key-app_id). Este proyecto no lee un campo `APP_ID`: requiere la App Key MSDK.
+
 La variante DJI lee la clave de `DJI_MSDK_API_KEY` o, si no está definida, de `dji.msdk.apiKey` en `local.properties`. La clave corresponde al paquete `com.gaslab.microgas`. Puede compilar sin ella, pero no iniciará recepción real. Demo y Receptor no la necesitan. No compartas credenciales ni confundas la clave Android MSDK con la configuración PSDK del payload.
 
 ### 8.3. Compilar y preparar los tres instaladores
@@ -576,7 +590,7 @@ Valida por etapas: lectura nueva y CRC del sensor; serialización local C; enví
 | Pitidos y ventana | DJI `MonitorService.kt`, `FloatingMonitor.kt` |
 | JSON y Bluetooth | DJI `LiveTelemetry.kt`, `BluetoothRelay.kt` |
 | Parseo y fragmentación | Receptor `Measurement.kt` contiene `MeasurementParser` y `NdjsonFramer` |
-| Conexión y ciclo de vida | Receptor `BluetoothClient.kt`, `MonitorViewModel.kt` |
+| Conexión y ciclo de vida | Receptor `BluetoothClient.kt`, `ReceiverEngine.kt`, `ReceiverService.kt`, `MonitorViewModel.kt` |
 | CSV y buffer | Receptor `CsvArchive.kt`, `MeasurementRepository.kt` |
 | Gráficas táctiles | Receptor `Co2Chart.kt`, `ChartSelection.kt` |
 | Colores | `Co2Appearance.kt` en ambos proyectos |
@@ -631,3 +645,423 @@ La ruta es una proyección local, sin imágenes cartográficas. El receptor no f
 Prueba física pendiente: conectar a Simulado, anotar contador y nombre CSV, ir a Inicio, bloquear la pantalla varios minutos y volver. Deben conservarse la sesión, el nombre CSV y las muestras recibidas durante ese intervalo. Repetir quitando la actividad de recientes y abriéndola mientras el servicio sigue activo. Desconectar desde notificación y desde app debe cerrar Bluetooth y quitar la notificación. Apagar/encender Bluetooth debe activar reconexión sin borrar el histórico. Denegar notificaciones no impide iniciar recepción; sin permiso de dispositivos cercanos debe mostrarse el error sin cerrar la app. Forzar cierre del proceso detiene la recepción; al reiniciar se conservan los CSV, no la sesión en memoria.
 
 Se usó el tipo Android [connectedDevice](https://developer.android.com/develop/background-work/services/fgs/service-types#connected-device). No se ha implementado ACK ni retransmisión de muestras perdidas.
+
+---
+
+## 13. Guía de Desarrollo con Android Studio y Extensión de Features
+
+Esta sección está diseñada para desarrolladores, investigadores o estudiantes que deseen modificar la aplicación o agregar nuevas funciones, **incluso si nunca antes han utilizado Android Studio**.
+
+---
+
+### 13.1. Cómo funciona Android Studio (Guía para principiantes)
+
+#### 1. Regla de oro: Cómo abrir el proyecto
+* En Android Studio, ve a **File → Open**.
+* **NUNCA abras la carpeta raíz `MicroGas/` completa.** Android Studio se confundirá porque contiene dos proyectos Gradle independientes.
+* Abre la carpeta específica con la que vas a trabajar:
+  * Abre `/home/.../MicroGas/app_dji/` para trabajar en la app del control remoto o simulador.
+  * Abre `/home/.../MicroGas/app_receptor/` para trabajar en la app del celular de monitoreo.
+
+#### 2. La ventana de Android Studio y sus vistas
+En el panel lateral izquierdo verás la estructura del proyecto. Arriba de ese panel hay un menú desplegable con opciones de vista:
+* **Vista `Android` (Recomendada para programar):** Oculta archivos de configuración complejos y te muestra solo lo que necesitas:
+  * `app / manifests / AndroidManifest.xml`: Aquí se declaran los permisos (Bluetooth, Notificaciones, etc.) y las pantallas/servicios de la app.
+  * `app / java / com.gaslab.microgas...`: Aquí está todo el código fuente en lenguaje **Kotlin** (`.kt`).
+  * `app / res /`: Recursos gráficos, iconos de la app y temas de colores.
+  * `Gradle Scripts`: Los archivos `build.gradle.kts` que controlan las librerías externas y la versión de compilación.
+* **Vista `Project`:** Muestra la estructura de carpetas real de tu disco duro tal como la verías en el explorador de archivos.
+
+#### 3. El botón del Elefante (*Sync Project with Gradle Files*)
+Gradle es el sistema que descarga librerías y compila el código. Cada vez que abras el proyecto por primera vez, o si modificas un archivo `build.gradle.kts`, verás una barra amarilla arriba o un icono de un **elefante con una flecha azul** en la esquina superior derecha. Haz clic en él para sincronizar las dependencias.
+
+#### 4. Build Variants (Solo en `app_dji`)
+En `app_dji` existen dos variantes de compilación (*Flavors*):
+* `demoDebug`: No necesita dron ni hardware DJI. Simula la generación de gases y ruta.
+* `djiDebug`: Conecta con el DJI Mobile SDK real para comunicarse con la aeronave.
+* Para cambiar entre una y otra: haz clic en la pestaña **Build Variants** (abajo a la izquierda) y en la columna *Active Build Variant* selecciona `demoDebug` o `djiDebug`.
+
+#### 5. Cómo probar la app en tu teléfono o en el control
+1. En tu teléfono Android, ve a *Ajustes → Información del teléfono* y pulsa 7 veces seguidas sobre *Número de compilación* para activar el menú de desarrollador.
+2. Ve a *Ajustes → Opciones de desarrollador* y activa **Depuración por USB** (*USB Debugging*).
+3. Conecta el dispositivo a la computadora por cable USB. En el teléfono aparecerá un aviso: *"¿Permitir depuración por USB?"*, pulsa **Permitir**.
+4. En la barra superior de Android Studio, verás un selector de dispositivos donde aparecerá el modelo de tu teléfono.
+5. Haz clic en el botón verde de **Play** (icono de triángulo verde o atajo `Shift + F10`). Android Studio compilará la app, la instalará en el dispositivo y la abrirá automáticamente.
+
+#### 6. ¿Dónde ver qué está pasando y cómo detectar errores?
+* **Pestaña Logcat (Barra inferior):** Es la consola de depuración en vivo. Puedes ver mensajes del sistema y llamadas `println(...)`. Si la aplicación se cierra inesperadamente (*Crash*), escribe `fatal` o `Exception` en la barra de búsqueda de Logcat; te mostrará en **texto rojo** el error exacto y el archivo y número de línea que causó el fallo.
+* **Pestaña Build (Barra inferior):** Te avisa si hay errores de sintaxis o tipos antes de ejecutar la app.
+
+#### 7. Entendiendo la tecnología: Jetpack Compose
+Estas aplicaciones **no utilizan los antiguos archivos XML de diseño**. Toda la interfaz se construye con **Jetpack Compose**:
+* Cada elemento visual (un botón, una tarjeta, una gráfica) es una función de Kotlin marcada con la anotación `@Composable`.
+* **Estado reactivo:** La interfaz no se manipula manualmente (no existe `findViewById` ni `button.setText`). En Receptor, `ReceiverEngine` conserva la sesión y publica el estado (`StateFlow`); `MonitorViewModel` lo expone a Compose y `ReceiverService` mantiene la recepción. En DJI, `MonitorEngine`, definido en `MonitorViewModel.kt`, gestiona adquisición y almacenamiento. Cuando llega una nueva muestra de gas del sensor o de Bluetooth, el estado cambia y Compose redibuja automáticamente los componentes necesarios.
+
+---
+
+### 13.2. Mapa de desarrollo: ¿Qué archivo modifico o creo para cada feature?
+
+Si deseas extender o personalizar el sistema, consulta esta guía rápida de archivos según el tipo de cambio que quieras realizar:
+
+#### Caso 1: Quiero agregar una nueva pantalla o pestaña en la app de monitoreo
+1. **Crear el diseño:** En `app_receptor/app/src/main/java/com/gaslab/microgas/receptor/`, crea un archivo Kotlin (ej. `NuevaPantalla.kt`) y define tu función `@Composable fun NuevaPantalla(state: MonitorUiState) { ... }`.
+2. **Agregar la pestaña:** Abre `MainActivity.kt`. En el bloque `TabRow(selectedTabIndex = ...)`, añade el nombre de tu pestaña a la lista: `listOf("Monitor", "Histórico", "Ruta y altura", "Nueva Pestaña")`.
+3. **Renderizarla:** En el bloque condicional `when (state.selectedTab)` o `if (state.selectedTab == 3)` dentro de `MainActivity.kt`, invoca tu función `NuevaPantalla(state, ...)`.
+
+#### Caso 2: Quiero agregar una nueva variable física o sensor
+1. **En el receptor (Modelo y parseo):**
+   * Abre `Measurement.kt`: Añade la nueva propiedad al `data class Measurement(..., val miVariable: Float? = null)`.
+   * En el mismo archivo, dentro de `MeasurementParser.parse()`, lee el dato del objeto JSON recibido por Bluetooth: `val miVar = json.finite("mi_variable")?.toFloat()`.
+2. **En las pantallas:**
+   * En `HistoryScreen.kt`: Añade una gráfica `Co2Chart(state.history.samples, "Mi Variable (unidad)", ..., value = { it.miVariable })` y agrega una columna en la tabla de datos crudos.
+3. **En el respaldo CSV:**
+   * En `MeasurementRepository.kt` y `CsvArchive.kt`: Añade el nombre de la columna al encabezado CSV y el valor en la fila generada.
+4. **En el emisor (`app_dji`):**
+   * En `PayloadProtocol.kt`: Decodifica el nuevo campo si viene en la trama binaria del sensor.
+   * En `LiveTelemetry.kt`: Agrégalo al JSON que se transmite por Bluetooth: `\"mi_variable\": ...`.
+
+#### Caso 3: Quiero modificar los colores, umbrales o alarmas
+1. **Reglas de color (Blanco, Amarillo, Rojo, Parpadeo):**
+   * Abre `Co2Appearance.kt` (existe uno en cada proyecto). Modifica la función `co2ReadingColor(co2, threshold, alarm, whitePhase)`.
+2. **Lógica de activación de alarma:**
+   * En Receptor, `AlertManager.kt` define `isCo2AlertActive`, invocada desde `ReceiverEngine.refreshAlert()`. En DJI, `LiveTelemetry.kt` define `LiveTelemetry.alarm` y `LiveTelemetry.fresh`; `MonitorService.kt` las usa para controlar los pitidos y el overlay. Revisa sus pruebas al cambiar frescura o umbral.
+3. **Diálogo de ajuste de umbral:**
+   * En `MainActivity.kt` de `app_receptor` busca `thresholdDialog` para cambiar el rango permitido (ej. 1 a 100.000 ppm) o el valor predeterminado.
+
+#### Caso 4: Quiero modificar el mapa de ruta o las gráficas
+1. **Gráficas de líneas y puntos táctiles:**
+   * Abre `Co2Chart.kt`: Contiene el dibujo en Canvas (`drawPath`, `drawCircle`), las líneas de cuadrícula y la lógica de gestos de zoom y paneo (`detectTransformGestures`).
+   * Abre `ChartSelection.kt`: Contiene el algoritmo euclidiano `nearestChartPoint` que busca la muestra más cercana al dedo cuando el usuario toca la pantalla.
+2. **Lógica de ruta y posición:**
+   * Revisa `RouteScreen.kt` (Canvas, gestos, Home, selector y detalle), `RouteGeometry.kt` (proyección e inversa para ejes), `RouteHighlights.kt` (métricas y clasificación) y `MeasurementRepository.kt` (Home y máximos de toda la sesión). Las coordenadas se manejan en pares `(sample.latitude, sample.longitude)`.
+
+#### Caso 5: Quiero modificar la comunicación Bluetooth
+1. **Emisor (Control DJI):**
+   * `BluetoothRelay.kt`: Inicia el socket servidor RFCOMM usando el UUID `bb239920-bdbc-4d51-8a12-a5351875d891`.
+   * `LiveTelemetry.kt`: Serializa los datos en una línea de texto JSON (formato NDJSON terminado en `\n`).
+2. **Receptor (Celular):**
+   * `BluetoothClient.kt`: Maneja el socket cliente, el hilo de lectura y los reintentos automáticos progresivos (5s, 10s, 20s, 30s).
+   * `NdjsonFramer` (dentro de `Measurement.kt`): Acumula los bytes recibidos del flujo y los corta en líneas completas cuando encuentra un salto de línea `\n`.
+
+#### Caso 6: Quiero modificar la ventana flotante (Overlay sobre DJI Pilot 2)
+1. **Diseño de la ventana:** Abre `FloatingMonitor.kt`. Controla el tamaño de la ventana, la vista minimizada (solo número de CO₂ y estado) y la vista expandida con arrastre táctil.
+2. **Servicio en segundo plano:** Abre `MonitorService.kt`. Mantiene la notificación, los pitidos y el overlay. La solicitud del permiso de superposición (`SYSTEM_ALERT_WINDOW`) se inicia desde `MonitorControls.kt` con `ACTION_MANAGE_OVERLAY_PERMISSION`.
+
+---
+
+### 13.3. Compilación automatizada mediante Makefile (`make apks`)
+
+Para facilitar el trabajo en la terminal sin depender de abrir Android Studio cada vez que se requiera compilar un instalador, se ha integrado un `Makefile` en la raíz del repositorio (`/MicroGas/`):
+
+```bash
+# Compilar las 3 variantes y copiarlas automáticamente a la carpeta ./apks/
+make apks
+
+# O compilar variantes individuales:
+make dji        # Genera apks/MicroGas-DJI-debug.apk (MSDK v5)
+make demo       # Genera apks/MicroGas-Simulado-debug.apk (Simulador)
+make receptor   # Genera apks/MicroGas-Receptor-debug.apk (Celular de monitoreo)
+
+# Ejecutar todas las pruebas unitarias automáticas:
+make test
+
+# Ejecutar análisis estático:
+make lint
+
+# Limpiar archivos temporales de compilación:
+make clean
+```
+
+Este comando asegura que los APKs resultantes queden centralizados en la carpeta `apks/` con nombres limpios y listos para transferir a los dispositivos.
+
+
+## 14. Receptor 0.4.3: Home, máximos y administración de CSV
+
+* **Home**: icono verde en la primera posición GPS válida recibida de la sesión; no certifica el punto de despegue. Se conserva aunque la muestra salga del buffer.
+* **10 valores más altos**: selector de las nueve variables; mantiene las 10 muestras de mayor valor de toda la sesión de recepción, sin límite de antigüedad ni dependencia de la ventana visible o del buffer de 7.200 muestras. Al llegar datos se actualiza la clasificación; en empates se conserva primero la muestra recibida antes. Los valores ausentes/no finitos se excluyen. Con menos de 10 valores válidos se muestran los disponibles.
+* Los máximos con GPS se resaltan en magenta sobre el mapa, incluidos los antiguos. La lista ordenada permite seleccionar cada máximo; los que no tienen GPS conservan su puesto y muestran «sin GPS». La trayectoria y el perfil de altura siguen usando el historial reciente. Home y máximos se reinician al iniciar manualmente otra sesión, no al reconectar automáticamente ni al cambiar la sesión del emisor. No se reconstruyen tras terminar el proceso.
+* **Ejes geográficos**: marcas de latitud y longitud sobre la cuadrícula, actualizadas con zoom y paneo; proyección local con norte arriba.
+* **CSV**: la lista rápida permite exportar. Para borrar entra en **Archivos CSV → Administrar CSV → Eliminar… → Borrar definitivamente**. Cada archivo requiere confirmación y la sesión activa permanece protegida; desconecta antes de borrarla.
+* **Makefile**: `make apks`, `make dji`, `make demo` y `make receptor` compilan y copian los instaladores a `apks/`; `make test` ejecuta pruebas y `make lint` el análisis estático. `make clean` limpia las compilaciones. Las tareas se ejecutan en serie para evitar compilar simultáneamente el mismo proyecto.
+
+### Prueba funcional de la nueva versión
+
+1. Conecta Simulado y Receptor en dos Android autorizados para depuración. Abre **Ruta y altura**: comprueba Home verde y las marcas de latitud/longitud al ampliar y desplazar el mapa.
+2. Cambia la variable en **Máximos**. Comprueba el orden descendente, selecciona un punto de la lista y verifica su detalle y resaltado. Si falta GPS, la muestra debe permanecer en la clasificación sin crear una posición.
+3. En una sesión larga, verifica que un máximo temprano y Home siguen disponibles después de 7.200 muestras; el perfil y la trayectoria reciente conservan su límite de memoria. Inicia manualmente otra sesión y comprueba el reinicio de Home y máximos.
+4. Exporta un CSV desde la lista rápida. Entra en **Administrar CSV**, cancela un borrado y comprueba que el archivo continúa; confirma el borrado de un archivo de prueba. El CSV activo no debe poder eliminarse mientras la recepción esté activa.
+
+La implementación pasó 36 pruebas unitarias del receptor, 47 por variante del emisor y lint sin errores. `make apks` generó los tres APK y sus firmas se verificaron. Estos resultados no sustituyen la prueba visual/Bluetooth anterior: el dispositivo disponible estaba sin autorización ADB. Consulta [el informe](docs/VALIDACION_RECEPTOR_0.4.3.md).
+
+El Makefile limita Gradle a dos workers y 1024 MB de heap y evita tareas paralelas sobre un mismo proyecto. Puedes añadir opciones mediante `GRADLE_FLAGS`; al sustituirlo conserva las opciones de recursos si el equipo tiene memoria limitada. `--offline` solo funciona si las dependencias ya están descargadas.
+
+---
+
+## 15. Cómo editar menús e interfaz en Android Studio
+
+Esta sección explica paso a paso cómo agregar o modificar elementos de la interfaz del receptor (botones, diálogos, pestañas) y cómo conectarlos con la lógica interna. Los ejemplos usan el código real de `app_receptor`.
+
+> **Importante:** Esta app usa **Jetpack Compose**. No hay archivos XML de layout. Toda la interfaz es código Kotlin. No existe un editor de arrastrar y soltar como en el diseño XML tradicional. Los cambios de UI se hacen editando funciones `@Composable` directamente en el código.
+
+---
+
+### 15.1. Orientarse en Android Studio y encontrar el archivo correcto
+
+#### Abrir el proyecto correcto
+
+1. Android Studio → **Open** → selecciona la carpeta `app_receptor/` (no la carpeta raíz `MicroGas/`).
+2. Espera a que termine el **Gradle Sync** (barra de progreso en la parte inferior de la pantalla).
+3. En el panel izquierdo, cambia el selector de vista de **Android** a **Project** para ver todos los archivos reales del disco.
+
+#### Estructura de archivos relevante
+
+```
+app_receptor/
+└── app/src/main/java/com/gaslab/microgas/receptor/
+    ├── MainActivity.kt        ← barra superior, botones, diálogos, pestañas
+    ├── MonitorScreen.kt       ← contenido de la pestaña "Monitor"
+    ├── HistoryScreen.kt       ← contenido de la pestaña "Histórico"
+    ├── RouteScreen.kt         ← contenido de la pestaña "Ruta y altura"
+    └── MonitorViewModel.kt    ← lógica interna (sin UI); expone state y funciones
+```
+
+#### Encontrar rápidamente dónde está algo
+
+Usa **Ctrl+Shift+F** (buscar en todo el proyecto). Si ves el texto "Administrar CSV" en la app, búscalo y Android Studio te lleva exactamente a la línea donde está definido. Es la forma más rápida de orientarse.
+
+---
+
+### 15.2. Editar la GUI: botones, diálogos y pestañas
+
+Todos los ejemplos siguientes corresponden a código real en `MainActivity.kt`.
+
+#### Ejemplo A — Agregar un botón en la barra superior
+
+Los botones **Bluetooth** y **Umbral** están en las líneas ~99–100 de `MainActivity.kt`:
+
+```kotlin
+// Código actual
+TextButton(onClick = { connectionDialog = true; refreshWithPermission() }) { Text("Bluetooth") }
+TextButton(onClick = { thresholdDialog = true }) { Text("Umbral") }
+```
+
+Para **agregar un botón nuevo** al lado de "Umbral", simplemente añades otro `TextButton` en la misma `Row`:
+
+```kotlin
+TextButton(onClick = { connectionDialog = true; refreshWithPermission() }) { Text("Bluetooth") }
+TextButton(onClick = { thresholdDialog = true }) { Text("Umbral") }
+TextButton(onClick = { /* tu acción aquí */ }) { Text("Mi botón") }   // ← nuevo
+```
+
+No necesitas declarar el botón en ningún otro lugar. Compose detecta el cambio y lo muestra automáticamente al compilar.
+
+---
+
+#### Ejemplo B — Agregar una opción dentro de un diálogo existente
+
+El diálogo de **Archivos CSV** está alrededor de la línea 139 de `MainActivity.kt`. Dentro del bloque que genera la fila de cada archivo (`items(state.csvFiles)`), el `Row` actual tiene solo el botón **Exportar**:
+
+```kotlin
+// Código actual
+Row {
+    TextButton(onClick = { /* exportar */ }) { Text("Exportar") }
+}
+```
+
+Para agregar un segundo botón en la misma fila:
+
+```kotlin
+Row {
+    TextButton(onClick = { /* exportar */ }) { Text("Exportar") }
+    TextButton(onClick = { /* nueva acción */ }) { Text("Compartir") }  // ← nuevo
+}
+```
+
+---
+
+#### Ejemplo C — Agregar un diálogo nuevo (desde cero)
+
+Un diálogo en Compose sigue siempre el mismo patrón de dos partes:
+
+**Parte 1 — Variable de estado que controla si el diálogo está abierto** (se declara con el resto de variables al inicio de `ReceptorApp`):
+
+```kotlin
+var miDialogo by rememberSaveable { mutableStateOf(false) }
+```
+
+**Parte 2 — El diálogo en sí** (se agrega al final de `ReceptorApp`, fuera del `Column` principal):
+
+```kotlin
+if (miDialogo) AlertDialog(
+    onDismissRequest = { miDialogo = false },
+    title = { Text("Mi nuevo diálogo") },
+    text = { Text("Contenido del diálogo") },
+    confirmButton = { TextButton(onClick = { miDialogo = false }) { Text("Aceptar") } },
+    dismissButton = { TextButton(onClick = { miDialogo = false }) { Text("Cancelar") } },
+)
+```
+
+**Parte 3 — El botón que lo abre** (en cualquier lugar de la UI):
+
+```kotlin
+TextButton(onClick = { miDialogo = true }) { Text("Abrir mi diálogo") }
+```
+
+Este es exactamente el mismo patrón que usan los diálogos de Umbral, Bluetooth y Archivos CSV ya existentes.
+
+---
+
+#### Ejemplo D — Agregar una pestaña nueva
+
+**Paso 1:** En la línea ~119 de `MainActivity.kt`, agrega el nombre al final de la lista:
+
+```kotlin
+// Antes (3 pestañas)
+listOf("Monitor", "Histórico", "Ruta y altura").forEachIndexed { index, name ->
+
+// Después (4 pestañas)
+listOf("Monitor", "Histórico", "Ruta y altura", "Mi pestaña").forEachIndexed { index, name ->
+```
+
+**Paso 2:** En el bloque condicional ~línea 123, agrega la nueva condición al inicio:
+
+```kotlin
+if (state.selectedTab == 3) {
+    MiNuevaPantalla(Modifier.weight(1f))   // función @Composable que defines tú
+} else if (state.selectedTab == 2) {
+    RouteScreen(...)
+} else if (...) {
+    ...
+}
+```
+
+**Paso 3:** Crea el archivo de la pantalla nueva. En la misma carpeta que `MainActivity.kt`, crea `MiNuevaPantalla.kt`:
+
+```kotlin
+package com.gaslab.microgas.receptor
+
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+
+@Composable
+fun MiNuevaPantalla(modifier: Modifier = Modifier) {
+    Text("Hola desde mi nueva pestaña")
+}
+```
+
+---
+
+### 15.3. Editar la lógica interna: ViewModel y estado
+
+La regla de esta app es que **la UI no hace lógica directamente**. En cambio, llama funciones del ViewModel:
+
+```
+Acción del usuario (toque de botón)
+    → la UI llama vm.miFuncion()
+    → MonitorViewModel ejecuta la lógica
+    → actualiza _state con .update { it.copy(...) }
+    → Compose detecta el cambio y redibuja solo lo necesario
+```
+
+#### Paso a paso para agregar lógica nueva
+
+**1. Agregar el dato al estado** — busca `data class MonitorUiState` en `MonitorViewModel.kt` y añade el campo:
+
+```kotlin
+data class MonitorUiState(
+    val threshold: Int = 3000,
+    val miNuevoDato: String = "",   // ← nuevo campo con valor inicial
+    // ...
+)
+```
+
+**2. Agregar la función en el ViewModel** — dentro de la clase `MonitorViewModel`:
+
+```kotlin
+fun actualizarMiDato(valor: String) {
+    // aquí va la lógica (validación, cálculo, etc.)
+    _state.update { it.copy(miNuevoDato = valor) }
+}
+```
+
+**3. Llamarla desde la UI** — en cualquier pantalla que tenga acceso al ViewModel:
+
+```kotlin
+// En MainActivity.kt, MonitorScreen.kt, etc.
+TextButton(onClick = { vm.actualizarMiDato("nuevo valor") }) {
+    Text("Hacer algo")
+}
+
+// Para mostrar el dato:
+Text("Estado: ${state.miNuevoDato}")
+```
+
+Compose se encarga automáticamente de redibujar el `Text` cuando `miNuevoDato` cambia, porque el estado se observa con `collectAsStateWithLifecycle()`.
+
+---
+
+### 15.4. Previsualizar cambios sin instalar en el teléfono
+
+Compose permite ver el resultado visual de un `@Composable` directamente en Android Studio sin compilar ni conectar ningún dispositivo, usando la anotación `@Preview`.
+
+```kotlin
+import androidx.compose.ui.tooling.preview.Preview
+
+@Preview(showBackground = true, backgroundColor = 0xFF1A1A1A)
+@Composable
+fun PreviewMiBoton() {
+    MaterialTheme {
+        TextButton(onClick = {}) { Text("Mi botón nuevo") }
+    }
+}
+```
+
+Al agregar esta función en cualquier archivo Kotlin del proyecto, Android Studio muestra un ícono de ojo en el margen izquierdo junto a la anotación `@Preview`. Al hacer clic se abre el panel **Design** a la derecha con la vista renderizada en vivo.
+
+**Cuándo sirve el Preview:**
+- Para ajustar colores, tamaños, padding y textos sin compilar.
+- Para prototipar la apariencia de un nuevo botón o diálogo.
+
+**Cuándo no sirve:**
+- No ejecuta lógica de negocio real (ViewModel, Bluetooth, CSV).
+- Para probar comportamiento hay que instalar en el teléfono con **Shift+F10** o el botón de triángulo verde.
+
+---
+
+### 15.5. Flujo de trabajo recomendado
+
+```
+1. Identificar el archivo
+   → Busca el texto visible en la app con Ctrl+Shift+F
+   → Te lleva directamente a la línea exacta
+
+2. Editar el Composable
+   → Agregar el elemento de UI (botón, diálogo, pestaña)
+   → Ajustar con @Preview si quieres ver el resultado visual
+
+3. Agregar lógica si hace falta
+   → Nuevo campo en MonitorUiState
+   → Nueva función en MonitorViewModel
+
+4. Compilar y probar en el teléfono
+   → Ctrl+F9 para compilar sin instalar (detecta errores)
+   → Shift+F10 o triángulo verde para instalar y ejecutar
+
+5. Verificar en el teléfono
+   → Comprobar que el elemento aparece y funciona
+   → Rotar pantalla para verificar que no se rompe el layout
+```
+
+**Atajos útiles de Android Studio:**
+
+| Atajo | Acción |
+|---|---|
+| `Ctrl+Shift+F` | Buscar texto en todo el proyecto |
+| `Ctrl+B` / `Ctrl+Click` | Ir a la definición de una función o clase |
+| `Shift+F10` | Compilar e instalar en el dispositivo conectado |
+| `Ctrl+F9` | Solo compilar (sin instalar), detecta errores de sintaxis |
+| `Alt+Enter` | Sugerencia de autocorrección / importar clase faltante |
+| `Ctrl+Z` | Deshacer el último cambio |
+| `Ctrl+Shift+Z` | Rehacer |
+

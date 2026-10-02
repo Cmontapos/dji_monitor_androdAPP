@@ -1,6 +1,6 @@
 # Contexto de MicroGas
 
-Actualizado: 25 de septiembre de 2026.
+Actualizado: 2 de octubre de 2026.
 
 ## Objetivo
 
@@ -139,11 +139,13 @@ borrado automático. Desinstalar la app o borrar sus datos elimina los registros
 privados. Una pérdida de conexión no borra las lecturas recibidas; para recuperar
 muestras que nunca llegaron se necesitaría registro local en la Pi.
 
-### Encabezado CSV (15 columnas)
+### Encabezado CSV histórico (15 columnas; anterior a SEN66 v2 y altura)
 
 ```csv
 fecha_hora_utc,co2_ppm,sen66_new_data,sen66_muestra_utc,sen66_secuencia,latitud,longitud,origen,payload_boot,payload_secuencia,payload_uptime_ms,gps_origen,gps_recepcion_utc,gps_edad_al_recibir_co2_ms,gps_nivel_senal
 ```
+
+El esquema actual tiene 24 columnas; consulta el manual principal. Este encabezado se conserva como referencia histórica.
 
 Timestamps en ISO-8601 UTC con milisegundos. Decimales con punto independiente
 del locale del sistema (se fuerza `Locale.US`). Latitud y longitud vacías si no
@@ -428,24 +430,43 @@ Serializador C compilado con `-Wall -Wextra -Werror`; las referencias binarias y
 JSON coinciden entre proyectos. Los tres APK Debug 0.3.0 se generaron y sus firmas
 se verificaron. Sin dispositivos ADB conectados; la prueba física queda pendiente.
 
-## Próximas Actualizaciones / Roadmap (Tercera pestaña en Receptor: Simulación de Pseudo-mapa y Altitud)
+## Actualización implementada: Receptor 0.4.3 — 2026-09-30
 
-Propuesta de evolución acotada **exclusivamente a la aplicación de monitoreo (`app_receptor`)**, manteniéndola como una **simulación de mapa de momento** sin alterar la aplicación del control (`app_dji`):
+* **Home**: icono verde en la primera posición GPS válida recibida de la sesión; no certifica el punto de despegue. Se conserva aunque la muestra salga del buffer.
+* **10 valores más altos**: selector de las nueve variables; mantiene las 10 muestras de mayor valor de toda la sesión de recepción, sin límite de antigüedad ni dependencia de la ventana visible o del buffer de 7.200 muestras. Al llegar datos se actualiza la clasificación; en empates se conserva primero la muestra recibida antes. Los valores ausentes/no finitos se excluyen. Con menos de 10 valores válidos se muestran los disponibles.
+* Los máximos con GPS se resaltan en magenta sobre el mapa, incluidos los antiguos. La lista ordenada permite seleccionar cada máximo; los que no tienen GPS conservan su puesto y muestran «sin GPS». La trayectoria y el perfil de altura siguen usando el historial reciente. Home y máximos se reinician al iniciar manualmente otra sesión, no al reconectar automáticamente ni al cambiar la sesión del emisor. No se reconstruyen tras terminar el proceso.
+* **Ejes geográficos**: marcas de latitud y longitud sobre la cuadrícula, actualizadas con zoom y paneo; proyección local con norte arriba.
+* **CSV**: la lista rápida permite exportar. Para borrar entra en **Archivos CSV → Administrar CSV → Eliminar… → Borrar definitivamente**. Cada archivo requiere confirmación y la sesión activa permanece protegida; desconecta antes de borrarla.
+* **Makefile**: `make apks`, `make dji`, `make demo` y `make receptor` compilan y copian los instaladores a `apks/`; `make test` ejecuta pruebas y `make lint` el análisis estático. `make clean` limpia las compilaciones. Las tareas se ejecutan en serie para evitar compilar simultáneamente el mismo proyecto.
 
-1. **Alcance Exclusivo en la App de Monitoreo (`app_receptor`)**:
-   * **Tercera Pestaña ("Mapa") en `MainActivity.kt`**:
-     * Integración en el `TabRow` principal (`Monitor`, `Histórico`, `Mapa`), desplegando el componente `MapScreen`.
-   * **Pseudo-mapa 2D Interactivo (Latitud vs Longitud)**:
-     * Renderizado en Canvas Compose con preservación de proporciones de aspecto.
-     * Soporte de **Zoom 2D** (pinza de 1x a 50x) y **Paneo bidireccional** (arrastre en $X$ e $Y$) mediante `detectTransformGestures`.
-     * **Inspección táctil de muestras**: Al tocar cualquier punto de la ruta en el mapa (`detectTapGestures` + `nearestChartPoint`), se resalta y abre la tarjeta de detalle mostrando hora milimétrica, CO₂, latitud, longitud y altitud.
-     * Marcadores visuales de inicio/despegue, trayectoria coloreada y posición en tiempo real.
-     * Botón *"Restablecer"* para reajustar automáticamente el encuadre a toda la ruta.
-   * **Gráfica de Altura vs Timestamp**:
-     * Curva temporal complementaria en Canvas que grafica la elevación frente al tiempo para evidenciar diferencias de cota durante los muestreos de gas.
-   * **Simulación Local Autónoma**:
-     * Si las muestras entrantes no incluyen coordenadas satelitales o altitud real, la app sintetiza una trayectoria y variación de altura en base a la secuencia temporal, permitiendo evaluar la funcionalidad sin dron.
-   * **Sin cambios en `app_dji`**: No se altera el control remoto ni la integración MSDK.
+DJI y Simulado conservan la versión 0.4.1 (5). Receptor usa 0.4.3 (7). Validación y limitaciones: [informe 0.4.3](../docs/VALIDACION_RECEPTOR_0.4.3.md).
 
+
+## Próxima versión planificada: Receptor 0.5.0 — mapa OpenStreetMap offline
+
+Contexto: misiones en volcanes, con o sin cobertura celular. Se usa **Osmdroid** (sin clave de API, sin Google Play Services). Si el teléfono tiene internet al momento de usar la app, el mapa muestra teselas OSM en tiempo real. Si no hay internet, el fondo queda gris pero la ruta, el Home y los máximos siguen funcionando normalmente porque dependen de `RouteGeometry`, no del mapa base.
+
+### Decisión de diseño
+El mapa va embebido dentro de la pestaña existente **Ruta y altura** (`RouteScreen`), como fondo georreferenciado bajo el Canvas actual de la ruta. El Canvas se conserva para la selección táctil de puntos y el perfil de altura. Solo afecta `app_receptor`; no se modifica `app_dji`.
+
+### Cambios previstos
+
+| Archivo | Cambio |
+|---|---|
+| `app_receptor/app/build.gradle.kts` | Agregar `implementation("org.osmdroid:osmdroid-android:6.1.20")` |
+| `app_receptor/app/src/main/AndroidManifest.xml` | Permisos `INTERNET` y `ACCESS_NETWORK_STATE` |
+| `app_receptor/app/src/main/java/.../RouteScreen.kt` | `Box` con `AndroidView { MapView }` como fondo y Canvas encima; el mapa se centra al bounding box de las muestras |
+| `app_receptor/app/src/main/java/.../RouteGeometry.kt` | Exponer bounding box de lat/lon para centrar el `MapView` |
+
+### Comportamiento esperado
+* **Con internet**: el `MapView` descarga y muestra teselas OSM/Mapnik; Osmdroid las cachea automáticamente en `files/osmdroid/` para usos futuros.
+* **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil funcionan igual porque son Canvas, no mapa base.
+* El zoom/paneo del `MapView` es independiente del zoom del Canvas (georeferencia vs. inspección de detalle temporal).
+* Ninguna funcionalidad ya implementada se reemplaza.
+
+### Limitaciones conocidas
+* Osmdroid requiere `AndroidView`, patrón estándar para mapas en Compose.
+* El caché automático de tiles crece en disco con el uso; sin límite configurado por defecto.
+* La precarga explícita de una zona (para garantizar offline antes de salir al campo) queda fuera del alcance de esta versión y se evaluará después.
 
 

@@ -111,21 +111,21 @@ opcionales vacíos. No modifica la app ni el protocolo del control.
   Comprobar banner/vibración y persistencia del umbral tras reiniciar la app.
 - Exportar, cancelar, cambiar de orientación con SAF abierto y probar un
   destino que falle. Revisar CSV UTC, decimales y coordenadas.
-- Pulsar Inicio/bloquear: no debe quedar adquisición ni vibración activa.
-  Volver: reconectar y conservar histórico mientras el proceso siga vivo.
+- Pulsar Inicio/bloquear: Bluetooth y CSV deben continuar, sin vibración.
+  Volver: conservar conexión, histórico y archivo mientras el proceso siga vivo.
 
 ## Respaldo automático en el teléfono (0.2.0)
 
 Cada muestra nueva aceptada se agrega al CSV privado `files/sessions/`, con
 `fd.sync()` por escritura y reversión de una escritura fallida. Se crea un archivo
 por conexión manual, al recibir la primera muestra. Reconexiones automáticas,
-rotaciones, pausa al ocultar la app y reinicios del emisor conservan ese archivo
+rotaciones, ocultar la app y reinicios del emisor conservan ese archivo
 mientras siga viva la sesión del receptor. No se duplican filas retenidas a 10 Hz:
 el teléfono registra las muestras nuevas que efectivamente recibe (~1 Hz).
 
 El CSV no tiene el límite de 7.200 muestras del histórico visual y permanece tras
 cerrar el proceso o reiniciar el teléfono. **Archivos CSV** permite listar,
-exportar y borrar con confirmación. Para borrar la sesión activa, desconecta
+exportar y abrir **Administrar CSV** para eliminar con confirmación. Para borrar la sesión activa, desconecta
 primero. No hay borrado automático. Desinstalar o borrar los datos de la aplicación
 elimina estos archivos privados; las copias exportadas permanecen.
 
@@ -167,6 +167,28 @@ se verificaron. Sin dispositivos ADB conectados; la prueba física queda pendien
 
 ## Historial de Actualizaciones (Updates)
 
+### v0.5.0 — Planificada: Mapa OpenStreetMap (Osmdroid)
+
+* **Mapa OSM como fondo georreferenciado** en la pestaña **Ruta y altura**, debajo del Canvas existente. Sin clave de API ni Google Play Services.
+  * **Con internet**: el `MapView` descarga y muestra teselas OSM/Mapnik en tiempo real; Osmdroid las cachea automáticamente en `files/osmdroid/` para usos futuros.
+  * **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil siguen funcionando porque son Canvas, independientes del mapa base.
+  * `build.gradle.kts`: `org.osmdroid:osmdroid-android:6.1.20`.
+  * `AndroidManifest.xml`: permisos `INTERNET` y `ACCESS_NETWORK_STATE`.
+  * `RouteScreen.kt`: `Box` con `AndroidView { MapView }` como primera capa y Canvas encima.
+  * `RouteGeometry.kt`: exponer bounding box lat/lon para centrar el `MapView` en las muestras actuales.
+  * La precarga explícita de tiles para garantizar offline antes de salir al campo se evaluará en una versión posterior.
+
+### v0.4.3 (2026-09-30) — Implementada
+
+* **Home**: icono verde en la primera posición GPS válida recibida de la sesión; no certifica el punto de despegue. Se conserva aunque la muestra salga del buffer.
+* **10 valores más altos**: selector de las nueve variables; mantiene las 10 muestras de mayor valor de toda la sesión de recepción, sin límite de antigüedad ni dependencia de la ventana visible o del buffer de 7.200 muestras. Al llegar datos se actualiza la clasificación; en empates se conserva primero la muestra recibida antes. Los valores ausentes/no finitos se excluyen. Con menos de 10 valores válidos se muestran los disponibles.
+* Los máximos con GPS se resaltan en magenta sobre el mapa, incluidos los antiguos. La lista ordenada permite seleccionar cada máximo; los que no tienen GPS conservan su puesto y muestran «sin GPS». La trayectoria y el perfil de altura siguen usando el historial reciente. Home y máximos se reinician al iniciar manualmente otra sesión, no al reconectar automáticamente ni al cambiar la sesión del emisor. No se reconstruyen tras terminar el proceso.
+* **Ejes geográficos**: marcas de latitud y longitud sobre la cuadrícula, actualizadas con zoom y paneo; proyección local con norte arriba.
+* **CSV**: la lista rápida permite exportar. Para borrar entra en **Archivos CSV → Administrar CSV → Eliminar… → Borrar definitivamente**. Cada archivo requiere confirmación y la sesión activa permanece protegida; desconecta antes de borrarla.
+* **Makefile**: `make apks`, `make dji`, `make demo` y `make receptor` compilan y copian los instaladores a `apks/`; `make test` ejecuta pruebas y `make lint` el análisis estático. `make clean` limpia las compilaciones. Las tareas se ejecutan en serie para evitar compilar simultáneamente el mismo proyecto.
+
+Validación: [36 pruebas aprobadas y lint sin errores](../docs/VALIDACION_RECEPTOR_0.4.3.md). La prueba visual y Bluetooth en hardware sigue pendiente.
+
 ### v0.4.0 (2026-09-29)
 Ruta y altura implementadas: consultar el [historial principal](../README.md#historial-de-actualizaciones-updates).
 Demo genera latitud, longitud y altura desde cero; DJI conserva la altura cruda del SDK (referencia pendiente). Bluetooth añade `aircraft_position.altitude_m` y los CSV agregan `altura_m` al final. El receptor ofrece la pestaña **Ruta y altura** con zoom, paneo, recentrado, inspección de muestras y perfil de altura. No se inventan coordenadas en el receptor si faltan en el mensaje.
@@ -198,17 +220,19 @@ Para modificar esta app, comienza por:
 | Trabajo | Archivo bajo `app/src/main/java/com/gaslab/microgas/receptor/` |
 |---|---|
 | Decodificar JSON o cambiar variables | `Measurement.kt` (también contiene `MeasurementParser` y `NdjsonFramer`) |
-| Cambiar conexión y reconexión | `BluetoothClient.kt`, `MonitorViewModel.kt` |
+| Cambiar conexión y reconexión | `BluetoothClient.kt`, `ReceiverEngine.kt`, `ReceiverService.kt` |
 | Ajustar memoria y CSV | `MeasurementRepository.kt`, `CsvArchive.kt` |
+| Modificar mapa, Home y máximos | `RouteScreen.kt`, `RouteGeometry.kt`, `RouteHighlights.kt`, `MeasurementRepository.kt` |
+| **Agregar mapa OSM de fondo (v0.5.0)** | `RouteScreen.kt` + `RouteGeometry.kt`; también `build.gradle.kts` y `AndroidManifest.xml` |
 | Modificar gráficas o toque de puntos | `Co2Chart.kt`, `ChartSelection.kt` |
 | Cambiar alarma y colores | `AlertManager.kt`, `Co2Appearance.kt`, `MonitorScreen.kt` |
 
 La selección funciona en el monitor y en las nueve gráficas del histórico. El zoom/paneo se habilita en el histórico (hasta 60x). El toque elige la muestra cercana en pantalla, muestra la hora de recepción del control con milisegundos y las coordenadas que acompañaban a esa muestra. Si no existen, muestra **GPS no disponible**. Seis decimales en pantalla no prueban precisión geográfica. Puedes cerrar el detalle; Restablecer también quita la selección del histórico.
 
-Hay dos exportaciones distintas: **Exportar CSV** del histórico copia el buffer en memoria; **Archivos CSV → Exportar** copia un respaldo persistente. Para entregar sesiones largas usa el segundo. Ocultar Receptor suspende su conexión por diseño; desactivar restricciones de batería no cambia este comportamiento. El emisor guarda de manera independiente.
+Hay dos exportaciones distintas: **Exportar CSV** del histórico copia el buffer en memoria; **Archivos CSV → Exportar** copia un respaldo persistente. Para entregar sesiones largas usa el segundo. Desde 0.4.2, ocultar Receptor mantiene Bluetooth y CSV mediante `ReceiverService`; las alarmas solo se activan con la interfaz visible. El emisor guarda de manera independiente.
 
 El umbral se configura en cada dispositivo: no se sincroniza por Bluetooth. Para comparar alertas establece el mismo valor en ambos. La alarma del teléfono vibra al entrar y muestra el banner; no implementa los pitidos del servicio DJI.
 
-Los conteos de pruebas anteriores son históricos. Repite los comandos de la sección Compilar para una nueva entrega. `versionName` es 0.4.2 y `versionCode` es 6.
+Los conteos de pruebas anteriores son históricos. Repite los comandos de la sección Compilar para una nueva entrega. `versionName` es 0.4.3 y `versionCode` es 7.
 
 Análisis posterior: [graficacionCompleta](../../graficacionCompleta/README.md). El teléfono exporta 16 columnas, conserva campos vacíos para datos ausentes y no inventa GPS de simulación.

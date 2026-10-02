@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class HistoryState(
     val samples: List<Measurement> = emptyList(),
+    val home: Measurement? = null,
+    val highest: Map<RouteMetric, List<Measurement>> = emptyMap(),
     val missingSequences: Long = 0,
     val sessionChanges: Int = 0,
     val ignoredSamples: Long = 0,
@@ -50,7 +52,9 @@ class MeasurementRepository(private val capacity: Int = 7_200) {
             state = state.copy(evictedSamples = state.evictedSamples + 1)
         }
         buffer.addLast(sample); last = sample
-        mutable.value = state.copy(samples = buffer.toList())
+        mutable.value = state.copy(samples = buffer.toList(),
+            home = state.home ?: sample.takeIf(::hasRouteFix),
+            highest = RouteMetric.entries.associateWith { updateHighest(state.highest[it].orEmpty(), sample, it) })
         return true
     }
 

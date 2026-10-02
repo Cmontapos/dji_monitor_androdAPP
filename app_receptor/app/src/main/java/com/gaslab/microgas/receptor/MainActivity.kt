@@ -52,12 +52,13 @@ private fun ReceptorApp(vm: MonitorViewModel = viewModel()) {
         vm.tab(2)
     }
     LaunchedEffect(state.history.samples) {
-        if (routeSelection != null && state.history.samples.none { (it.session to it.sequence) == routeSelection }) routeSelection = null
+        if (routeSelection != null && (state.history.samples + state.history.highest.values.flatten() + listOfNotNull(state.history.home)).none { (it.session to it.sequence) == routeSelection }) routeSelection = null
     }
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var connectionDialog by rememberSaveable { mutableStateOf(false) }
     var filesDialog by rememberSaveable { mutableStateOf(false) }
+    var manageFiles by rememberSaveable { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<String?>(null) }
     var thresholdDialog by rememberSaveable { mutableStateOf(false) }
     var pendingDevice by remember { mutableStateOf<PairedDevice?>(null) }
@@ -120,7 +121,7 @@ private fun ReceptorApp(vm: MonitorViewModel = viewModel()) {
                 }
             }
             if (state.selectedTab == 2) {
-                RouteScreen(state.history.samples, Modifier.weight(1f), routeSelection) { routeSelection = it }
+                RouteScreen(state.history.samples, Modifier.weight(1f), routeSelection, state.history.home, state.history.highest) { routeSelection = it }
             } else if (state.connection.phase == ConnectionPhase.DISCONNECTED && state.history.samples.isEmpty()) {
                 ConnectionPanel(state, onRefresh = { refreshWithPermission() }, onConnect = vm::connect, modifier = Modifier.weight(1f))
             } else if (state.selectedTab == 0) {
@@ -152,20 +153,38 @@ private fun ReceptorApp(vm: MonitorViewModel = viewModel()) {
                                     try { export.launch(name) } catch (e: Exception) { vm.export(null); vm.message("No se pudo abrir el selector: ${e.message}") }
                                 }
                             }) { Text("Exportar") }
-                            TextButton(enabled = name != state.activeCsv && !state.exportBusy && !state.deleting,
-                                onClick = { deleteCandidate = name }) { Text("Borrar") }
                         }
                     }
                 }
             }
         },
         confirmButton = { TextButton(onClick = { filesDialog = false }) { Text("Cerrar") } },
+        dismissButton = { TextButton(onClick = { filesDialog = false; manageFiles = true }) { Text("Administrar CSV") } },
+    )
+    if (manageFiles) AlertDialog(
+        onDismissRequest = { manageFiles = false; deleteCandidate = null },
+        title = { Text("Administrar archivos CSV") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 400.dp)) {
+                item { Text("Selecciona un respaldo para eliminarlo. Cada borrado requiere confirmación.") }
+                if (state.csvFiles.isEmpty()) item { Text("No hay archivos guardados.") }
+                items(state.csvFiles, key = { it }) { name ->
+                    Column {
+                        Text(name, style = MaterialTheme.typography.bodySmall)
+                        if (name == state.activeCsv) Text("Sesión activa · protegida")
+                        TextButton(enabled = name != state.activeCsv && !state.exportBusy && !state.deleting,
+                            onClick = { deleteCandidate = name }) { Text("Eliminar…") }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { manageFiles = false; deleteCandidate = null }) { Text("Cerrar") } },
     )
     deleteCandidate?.let { name -> AlertDialog(
         onDismissRequest = { deleteCandidate = null },
         title = { Text("¿Borrar respaldo del teléfono?") },
         text = { Text("Se eliminará $name. Las copias exportadas y los archivos del control se conservan.") },
-        confirmButton = { TextButton(onClick = { vm.deleteFile(name); deleteCandidate = null }) { Text("Borrar definitivamente") } },
+        confirmButton = { TextButton(enabled = name != state.activeCsv && !state.exportBusy && !state.deleting, onClick = { vm.deleteFile(name); deleteCandidate = null }) { Text("Borrar definitivamente") } },
         dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("Cancelar") } },
     ) }
     if (connectionDialog) AlertDialog(

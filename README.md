@@ -6,7 +6,7 @@ MicroGas recibe paquetes del payload por DJI MSDK, agrega la posición del dron,
 
 **Empieza aquí:** [manual de incorporación y replicación](MANUAL_REPLICACION_DESDE_CERO.md). Incluye preparación del entorno, compilación de los tres APK, prueba con dos teléfonos, integración del payload, análisis y diagnóstico. La estructura del espacio de trabajo se describe en el [README de GasLab](../README.md).
 
-**Estado al 2026-09-29:** Receptor declara `versionName = "0.4.2"` y `versionCode = 6`; DJI y Simulado siguen en 0.4.1 (5). Se agregó ruta simulada, altura y la tercera pestaña del receptor. La validación física se documenta por separado de las pruebas automatizadas.
+**Estado al 2026-10-02:** Receptor declara `versionName = "0.4.3"` y `versionCode = 7`; DJI y Simulado siguen en 0.4.1 (5). Se planifica v0.5.0 con mapa OpenStreetMap (Osmdroid) offline para `app_receptor`, sin cambios en `app_dji`. La validación física se documenta por separado de las pruebas automatizadas.
 
 ---
 
@@ -86,6 +86,31 @@ Tanto en el transmisor (control DJI) como en el receptor de tierra, las lecturas
 ---
 
 ## Historial de Actualizaciones (Updates)
+
+### [Receptor v0.5.0] - Planificada
+
+> Solo afecta `app_receptor`. `app_dji` y `app_demo` conservan la versión 0.4.1.
+
+* **Mapa OpenStreetMap (Osmdroid) como fondo georreferenciado** en la pestaña **Ruta y altura**, debajo del Canvas existente. Sin clave de API ni Google Play Services.
+  * **Con internet**: muestra teselas OSM/Mapnik en tiempo real; Osmdroid las cachea automáticamente en `files/osmdroid/`.
+  * **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil siguen funcionando porque son Canvas, independientes del mapa base.
+  * Archivos a tocar: `build.gradle.kts` (dependencia), `AndroidManifest.xml` (permisos `INTERNET` + `ACCESS_NETWORK_STATE`), `RouteScreen.kt` (añadir `AndroidView { MapView }`) y `RouteGeometry.kt` (exponer bounding box).
+  * La precarga explícita de tiles para uso offline garantizado queda fuera del alcance de esta versión.
+
+### [Receptor v0.4.3] - 2026-09-30
+
+* **Home**: icono verde en la primera posición GPS válida recibida de la sesión; no certifica el punto de despegue. Se conserva aunque la muestra salga del buffer.
+* **10 valores más altos**: selector de las nueve variables; mantiene las 10 muestras de mayor valor de toda la sesión de recepción, sin límite de antigüedad ni dependencia de la ventana visible o del buffer de 7.200 muestras. Al llegar datos se actualiza la clasificación; en empates se conserva primero la muestra recibida antes. Los valores ausentes/no finitos se excluyen. Con menos de 10 valores válidos se muestran los disponibles.
+* Los máximos con GPS se resaltan en magenta sobre el mapa, incluidos los antiguos. La lista ordenada permite seleccionar cada máximo; los que no tienen GPS conservan su puesto y muestran «sin GPS». La trayectoria y el perfil de altura siguen usando el historial reciente. Home y máximos se reinician al iniciar manualmente otra sesión, no al reconectar automáticamente ni al cambiar la sesión del emisor. No se reconstruyen tras terminar el proceso.
+* **Ejes geográficos**: marcas de latitud y longitud sobre la cuadrícula, actualizadas con zoom y paneo; proyección local con norte arriba.
+* **CSV**: la lista rápida permite exportar. Para borrar entra en **Archivos CSV → Administrar CSV → Eliminar… → Borrar definitivamente**. Cada archivo requiere confirmación y la sesión activa permanece protegida; desconecta antes de borrarla.
+* **Makefile**: `make apks`, `make dji`, `make demo` y `make receptor` compilan y copian los instaladores a `apks/`; `make test` ejecuta pruebas y `make lint` el análisis estático. `make clean` limpia las compilaciones. Las tareas se ejecutan en serie para evitar compilar simultáneamente el mismo proyecto.
+
+Validación: 36 pruebas de Receptor, 47 de Demo y 47 de DJI aprobadas; lint sin errores (4, 11 y 10 advertencias respectivamente). Los tres APK se generaron con `make apks` y sus firmas se verificaron. Prueba visual/Bluetooth pendiente: el dispositivo conectado aparecía sin autorización ADB. Ver [informe 0.4.3](docs/VALIDACION_RECEPTOR_0.4.3.md).
+
+### [Documentación actualizada] - 2026-09-30
+
+Se actualizaron las instrucciones de la versión 0.4.3, el mapa de archivos para desarrollo, la propiedad del estado y las alarmas, el permiso de overlay, los esquemas CSV y el README del graficador. El README de DJI comienza con la configuración de la App Key MSDK. El PDF se genera desde el manual principal con `docs/generar_manual_pdf.sh`.
 
 ### [Receptor v0.4.2] - 2026-09-29
 * Recepción Bluetooth, reconexión y CSV continúan al ocultar la app o bloquear la pantalla mediante un servicio `connectedDevice` con notificación y acción Desconectar.

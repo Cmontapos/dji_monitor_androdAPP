@@ -1,5 +1,21 @@
 # MicroGas DJI & Demo
 
+## Antes de compilar DJI: dónde colocar la App Key (APP_ID)
+
+Este proyecto Android usa la **App Key de DJI Mobile SDK (MSDK)**, no un campo llamado `APP_ID`. Si tienes un App ID del payload/PSDK, no lo pegues como clave MSDK. El identificador Android del proyecto es `com.gaslab.microgas`.
+
+Edita **`app_dji/local.properties`**, junto a `gradlew` y `settings.gradle.kts`, y añade esta línea conservando el `sdk.dir` existente:
+
+```properties
+dji.msdk.apiKey=TU_APP_KEY_DJI_MSDK
+```
+
+No añadas comillas ni pegues el identificador de la app en lugar de la clave. `local.properties` está excluido de Git; configúralo en cada equipo de desarrollo. No necesitas editar el manifiesto ni el código Kotlin.
+
+Como alternativa, define `DJI_MSDK_API_KEY` en el entorno del proceso que ejecuta Gradle. Esa variable tiene prioridad sobre `dji.msdk.apiKey`, incluso si está definida vacía. Gradle coloca el valor en `com.dji.sdk.API_KEY` del manifiesto de la variante `dji` mediante el placeholder `DJI_API_KEY`.
+
+Desde la raíz `MicroGas`, ejecuta `make dji` para reconstruir `apks/MicroGas-DJI-debug.apk`. En Android Studio abre `app_dji` y selecciona `djiDebug`. La variante Simulado (`demoDebug`) y Receptor no requieren esta clave. Compilar DJI sin clave no demuestra que el SDK pueda registrarse o recibir datos reales.
+
 Aplicación para el control remoto **DJI RC Pro Enterprise** (Android 10+, API 29+). Integra la captura de gases del multisensor **Sensirion SEN66**, coordenadas GNSS de la aeronave mediante **DJI Mobile SDK v5**, visualización sobre **DJI Pilot 2**, retransmisión **Bluetooth RFCOMM** a estaciones terrestres y registro seguro en archivos **CSV**.
 
 ## Resumen de Funciones Implementadas
@@ -21,7 +37,7 @@ Aplicación para el control remoto **DJI RC Pro Enterprise** (Android 10+, API 2
 Prototipo Android horizontal para DJI RC Pro Enterprise. Kotlin y Jetpack Compose.
 La variante Demo muestra datos simulados a ~1 Hz; DJI muestra los recibidos del payload. Incluye máximo observado, barra relativa, pausa y últimas
 10 muestras por defecto, con selección de cantidad y retroceso. Las columnas sin datos aparecen como «—». DJI consulta el GPS del dron mediante MSDK;
-la demo no genera coordenadas.
+la demo genera coordenadas sintéticas cerca de 9.93°, -84.08° y altura de 0–60 m.
 El indicador de simulación permanece visible. Las barras no son umbrales de alarma.
 
 ## Abrir y ejecutar
