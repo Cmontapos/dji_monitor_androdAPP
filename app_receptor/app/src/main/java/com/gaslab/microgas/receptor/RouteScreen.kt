@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
@@ -20,6 +21,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -32,11 +35,12 @@ fun RouteScreen(samples: List<Measurement>, modifier: Modifier = Modifier,
 ) {
     var metric by remember { mutableStateOf(RouteMetric.CO2) }
     var metricsMenu by remember { mutableStateOf(false) }
+    var fullscreen by remember { mutableStateOf(false) }
     val maxima = highest[metric].orEmpty()
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Ruta y altura", style = MaterialTheme.typography.titleLarge)
-            Text("Recorrido local sin fondo cartográfico · norte arriba")
+            Text("Recorrido sobre mapa OpenStreetMap (requiere internet; sin red el fondo queda gris) · norte arriba")
             Text(if (samples.lastOrNull()?.origin == "simulado")
                 "SIMULACIÓN · coordenadas sintéticas y altura desde cero"
                 else "Altura entregada por el dron · referencia pendiente de definir")
@@ -55,7 +59,7 @@ fun RouteScreen(samples: List<Measurement>, modifier: Modifier = Modifier,
             Text("Home · verde: primera posición válida recibida; no indica necesariamente el despegue.")
         }
         }
-        item { RouteMap(samples, selectedKey, onSelectionChange, home, maxima) }
+        item { RouteMap(samples, selectedKey, onSelectionChange, home, maxima, onToggleFullscreen = { fullscreen = true }) }
         item { Column {
             Text("Máximos de ${metric.label}", style = MaterialTheme.typography.titleMedium)
             if (maxima.isEmpty()) Text("Sin valores válidos para esta variable.")
@@ -71,11 +75,19 @@ fun RouteScreen(samples: List<Measurement>, modifier: Modifier = Modifier,
         item { Co2Chart(samples, "Altura (m)", null, interactive = true, sharedSelection = selectedKey, onSelectionChange = onSelectionChange,
             value = { it.altitudeM?.toFloat()?.takeIf { value -> value.isFinite() } }) }
     }
+    if (fullscreen) {
+        Dialog(onDismissRequest = { fullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize()) {
+                RouteMap(samples, selectedKey, onSelectionChange, home, maxima, fullscreen = true, onToggleFullscreen = { fullscreen = false })
+            }
+        }
+    }
 }
 
 @Composable
 private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>?,
     onSelectionChange: (Pair<String, Long>?) -> Unit, home: Measurement?, maxima: List<Measurement>,
+    fullscreen: Boolean = false, onToggleFullscreen: () -> Unit = {},
 ) {
     val select by rememberUpdatedState(onSelectionChange)
     val anchor = home ?: samples.firstOrNull(::hasRouteFix)
@@ -97,6 +109,16 @@ private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>
     fun screen(p: RoutePoint) = Offset(
         (width / 2 + (p.east - (bounds[0] + bounds[1]) / 2) * scale).toFloat() + pan.x,
         (height / 2 - (p.north - (bounds[2] + bounds[3]) / 2) * scale).toFloat() + pan.y)
+    // Geographic window currently visible in the canvas, used to position the OSM backdrop.
+    val geoWindow = if (anchor == null || width <= 0f || height <= 0f || !scale.isFinite() || scale <= 0.0) null else {
+        fun geo(x: Float, y: Float) = routeCoordinate(anchor,
+            (x - width / 2 - pan.x) / scale + (bounds[0] + bounds[1]) / 2,
+            (height / 2 + pan.y - y) / scale + (bounds[2] + bounds[3]) / 2)
+        val (topLat, leftLon) = geo(0f, 0f)
+        val (bottomLat, rightLon) = geo(width, height)
+        if (leftLon == null || rightLon == null || rightLon <= leftLon) null
+        else GeoWindow(topLat.coerceIn(-85.0, 85.0), bottomLat.coerceIn(-85.0, 85.0), rightLon, leftLon)
+    }
     val screenPoints = points.map { p -> p?.let { it to screen(it) } }
     val extraPoints = extra.map { it to screen(it) }
     val selectable = (screenPoints.filterNotNull() + extraPoints).distinctBy { it.first.sample.session to it.first.sample.sequence }
@@ -113,18 +135,24 @@ private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>
     val selectedColor = MaterialTheme.colorScheme.onSurface
     val markerColor = Color(0xFFFF59D6)
     val homeColor = Color(0xFF66DD88)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Column(if (fullscreen) Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp) else Modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetweenF{
             Text("Latitud ↑ · Longitud →", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = { zoom = 1f; pan = Offset.Zero; frozenBounds = null; select(null) }) { Text("Recentrar") }
+            Row {
+                TextButton(onClick = { zoom = 1f; pan = Offset.Zero; frozenBounds = null; select(null) }) { Text("Recentrar") }
+                TextButton(onClick = onToggleFullscreen) { Text(if (fullscreen) "Cerrar" else "Pantalla completa") }
+            }
         }
         if (valid.isEmpty()) Text("Sin coordenadas. Conecta MicroGas Simulado o recibe GPS válido del dron.")
         else {
-            Canvas(Modifier.fillMaxWidth().height(300.dp).onSizeChanged { canvasSize = it }
+            Box((if (fullscreen) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().height(300.dp)).clipToBounds()) {
+            OsmBackground(geoWindow, Modifier.matchParentSize())
+            Canvas(Modifier.fillMaxSize().onSizeChanged { canvasSize = it }
                 .pointerInput(session) {
                     detectTransformGestures { centroid, movement, factor, _ ->
                         if (frozenBounds == null) frozenBounds = currentBounds
-                        val next = (zoom * factor).coerceIn(1f, 60f)
+                        val next = (zoom * factor).coerceIn(0.01f, 60f)
                         val center = Offset(size.width / 2f, size.height / 2f)
                         pan = centroid - center - (centroid - center - pan) * (next / zoom) + movement
                         zoom = next
@@ -188,15 +216,16 @@ private fun RouteMap(samples: List<Measurement>, selectedKey: Pair<String, Long>
                     }
                 }
             }
+            }
             Text("Pellizca para ampliar · arrastra en cualquier dirección · toca una muestra", style = MaterialTheme.typography.labelSmall)
         }
         (samples + listOfNotNull(home) + maxima).firstOrNull { selectedKey == (it.session to it.sequence) }?.let { m ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss.SSS").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(m.receivedAtMs)))
-                    Text("Latitud: ${numberLabel(m.latitude, 6)}° · Longitud: ${numberLabel(m.longitude, 6)}°")
-                    Text("Altura: ${numberLabel(m.altitudeM)} m · CO₂: ${numberLabel(m.co2Ppm)} ppm")
-                    Text(if (m.origin == "simulado") "Muestra simulada · altura base cero" else "Muestra del dron · referencia de altura pendiente")
+                    Text("Latitud: ${numberLabel(m.latitude, 6)}°")
+                    Text("Longitud: ${numberLabel(m.longitude, 6)}°")
+                    Text("Altitud: ${numberLabel(m.altitudeM)} m")
+                    Text("CO₂: ${numberLabel(m.co2Ppm)} ppm")
                     TextButton(onClick = { select(null) }) { Text("Cerrar detalle") }
                 }
             }

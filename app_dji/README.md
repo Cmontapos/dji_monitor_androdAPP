@@ -37,7 +37,7 @@ Aplicación para el control remoto **DJI RC Pro Enterprise** (Android 10+, API 2
 Prototipo Android horizontal para DJI RC Pro Enterprise. Kotlin y Jetpack Compose.
 La variante Demo muestra datos simulados a ~1 Hz; DJI muestra los recibidos del payload. Incluye máximo observado, barra relativa, pausa y últimas
 10 muestras por defecto, con selección de cantidad y retroceso. Las columnas sin datos aparecen como «—». DJI consulta el GPS del dron mediante MSDK;
-la demo genera coordenadas sintéticas cerca de 9.93°, -84.08° y altura de 0–60 m.
+la demo genera coordenadas sintéticas en órbita de ≈100 m alrededor de 10.197183°, -84.232373° y altura de 0–60 m.
 El indicador de simulación permanece visible. Las barras no son umbrales de alarma.
 
 ## Abrir y ejecutar

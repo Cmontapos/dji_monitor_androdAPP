@@ -87,15 +87,15 @@ Tanto en el transmisor (control DJI) como en el receptor de tierra, las lecturas
 
 ## Historial de Actualizaciones (Updates)
 
-### [Receptor v0.5.0] - Planificada
+### [Receptor v0.5.0] - Implementada
 
 > Solo afecta `app_receptor`. `app_dji` y `app_demo` conservan la versión 0.4.1.
 
 * **Mapa OpenStreetMap (Osmdroid) como fondo georreferenciado** en la pestaña **Ruta y altura**, debajo del Canvas existente. Sin clave de API ni Google Play Services.
-  * **Con internet**: muestra teselas OSM/Mapnik en tiempo real; Osmdroid las cachea automáticamente en `files/osmdroid/`.
-  * **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil siguen funcionando porque son Canvas, independientes del mapa base.
-  * Archivos a tocar: `build.gradle.kts` (dependencia), `AndroidManifest.xml` (permisos `INTERNET` + `ACCESS_NETWORK_STATE`), `RouteScreen.kt` (añadir `AndroidView { MapView }`) y `RouteGeometry.kt` (exponer bounding box).
-  * La precarga explícita de tiles para uso offline garantizado queda fuera del alcance de esta versión.
+  * **Con internet**: `OsmBackground.kt` carga teselas OSM/Mapnik y las cachea en `files/osmdroid/tiles/`. El `MapView` sigue automáticamente el viewport del Canvas gracias al `GeoWindow` calculado en tiempo real.
+  * **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil siguen funcionando porque son Canvas.
+  * Archivos nuevos/modificados: `OsmBackground.kt` (nuevo), `RouteScreen.kt` (integración `GeoWindow`), `build.gradle.kts` (dependencia Osmdroid 6.1.20), `AndroidManifest.xml` (permisos `INTERNET` + `ACCESS_NETWORK_STATE`).
+  * La precarga explícita de tiles para uso offline garantizado queda pendiente para una versión futura.
 
 ### [Receptor v0.4.3] - 2026-09-30
 
@@ -123,7 +123,7 @@ Se actualizaron las instrucciones de la versión 0.4.3, el mapa de archivos para
 * Mapa y perfil de altura comparten selección por sesión y secuencia, con halo de resaltado en ambos sentidos. Si el punto está fuera del encuadre por zoom/paneo, la vista se restablece para mostrarlo. No se interpola altura cuando falta.
 
 ### [v0.4.0] - 2026-09-29
-* Demo: ruta sintética cerca de 9.93°, -84.08°, altura periódica de 0 a 60 m desde cero; no usa ubicación del teléfono.
+* Demo: ruta sintética en órbita de ≈100 m alrededor de 10.197183°, -84.232373°, altura periódica de 0 a 60 m desde cero; no usa ubicación del teléfono.
 * DJI: extrae `altitude` de la misma respuesta `KeyAircraftLocation3D` usada para latitud/longitud. Conserva el valor del SDK en metros, incluidos valores negativos, sin offset ni conversión vertical; referencia pendiente de definir y validar en equipo.
 * Bluetooth: campo opcional `aircraft_position.altitude_m`; `source` distingue `simulado` de `dji_aircraft_msdk`.
 * CSV de ambas apps: nueva columna final `altura_m`; valores ausentes permanecen vacíos.

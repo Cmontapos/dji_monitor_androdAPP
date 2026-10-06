@@ -442,31 +442,27 @@ se verificaron. Sin dispositivos ADB conectados; la prueba física queda pendien
 DJI y Simulado conservan la versión 0.4.1 (5). Receptor usa 0.4.3 (7). Validación y limitaciones: [informe 0.4.3](../docs/VALIDACION_RECEPTOR_0.4.3.md).
 
 
-## Próxima versión planificada: Receptor 0.5.0 — mapa OpenStreetMap offline
 
-Contexto: misiones en volcanes, con o sin cobertura celular. Se usa **Osmdroid** (sin clave de API, sin Google Play Services). Si el teléfono tiene internet al momento de usar la app, el mapa muestra teselas OSM en tiempo real. Si no hay internet, el fondo queda gris pero la ruta, el Home y los máximos siguen funcionando normalmente porque dependen de `RouteGeometry`, no del mapa base.
 
-### Decisión de diseño
-El mapa va embebido dentro de la pestaña existente **Ruta y altura** (`RouteScreen`), como fondo georreferenciado bajo el Canvas actual de la ruta. El Canvas se conserva para la selección táctil de puntos y el perfil de altura. Solo afecta `app_receptor`; no se modifica `app_dji`.
+## Receptor 0.5.0 — mapa OpenStreetMap (Osmdroid) — Implementada
 
-### Cambios previstos
+Misiones en volcanes, con o sin cobertura celular. **Osmdroid** (sin clave de API, sin Google Play Services) como fondo pasivo bajo el Canvas de `RouteScreen`. Solo afecta `app_receptor`.
+
+### Archivos cambiados
 
 | Archivo | Cambio |
 |---|---|
-| `app_receptor/app/build.gradle.kts` | Agregar `implementation("org.osmdroid:osmdroid-android:6.1.20")` |
-| `app_receptor/app/src/main/AndroidManifest.xml` | Permisos `INTERNET` y `ACCESS_NETWORK_STATE` |
-| `app_receptor/app/src/main/java/.../RouteScreen.kt` | `Box` con `AndroidView { MapView }` como fondo y Canvas encima; el mapa se centra al bounding box de las muestras |
-| `app_receptor/app/src/main/java/.../RouteGeometry.kt` | Exponer bounding box de lat/lon para centrar el `MapView` |
+| `OsmBackground.kt` | **Nuevo.** Composable `OsmBackground(window: GeoWindow?)`. Recibe el viewport geográfico del Canvas y ajusta el `MapView` para que coincida. Gestos táctiles del `MapView` desactivados (`setOnTouchListener { _, _ -> true }`). Incluye crédito `© OpenStreetMap contributors`. Gestiona `onResume`/`onPause` del ciclo de vida. |
+| `RouteScreen.kt` | Líneas 113–121: calcula `geoWindow: GeoWindow?` en tiempo real mediante proyección inversa del viewport visible. Línea 150: `OsmBackground(geoWindow, Modifier.matchParentSize())` dentro del `Box`, Canvas encima. El `MapView` sigue automáticamente al zoom/paneo del Canvas sin gestos propios. |
+| `build.gradle.kts` | `implementation("org.osmdroid:osmdroid-android:6.1.20")` |
+| `AndroidManifest.xml` | `INTERNET` y `ACCESS_NETWORK_STATE` |
 
-### Comportamiento esperado
-* **Con internet**: el `MapView` descarga y muestra teselas OSM/Mapnik; Osmdroid las cachea automáticamente en `files/osmdroid/` para usos futuros.
-* **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil funcionan igual porque son Canvas, no mapa base.
-* El zoom/paneo del `MapView` es independiente del zoom del Canvas (georeferencia vs. inspección de detalle temporal).
-* Ninguna funcionalidad ya implementada se reemplaza.
+### Comportamiento real implementado
+* **Con internet**: OSM Mapnik se descarga tile a tile y queda cacheado en `files/osmdroid/tiles/`. El `MapView` se centra en el bounding box visible del Canvas usando `zoomToBoundingBox`.
+* **Sin internet**: fondo gris. La ruta, el marcador Home, los máximos en magenta, los ejes lat/lon y la inspección táctil funcionan igual.
+* El `MapView` es pasivo: no tiene gestos propios. Zoom y paneo siguen siendo del Canvas.
+* `GeoWindow(north, south, east, west)` es la ventana geográfica actualmente visible, recalculada en cada frame de renderizado.
 
-### Limitaciones conocidas
-* Osmdroid requiere `AndroidView`, patrón estándar para mapas en Compose.
-* El caché automático de tiles crece en disco con el uso; sin límite configurado por defecto.
-* La precarga explícita de una zona (para garantizar offline antes de salir al campo) queda fuera del alcance de esta versión y se evaluará después.
-
+### Pendiente para versión futura
+* Precarga explícita de un área para garantizar disponibilidad 100% offline antes de salir al campo (`.mbtiles` o descarga programática).
 

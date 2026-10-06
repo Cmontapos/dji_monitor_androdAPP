@@ -28,13 +28,17 @@ class SimulatedSampleSource : SampleSource {
     }
 }
 
+private const val SIM_CENTER_LAT = 10.197183
+private const val SIM_CENTER_LON = -84.232373
+private const val SIM_RADIUS_DEG = 0.0009 // ≈100 m orbit around the centre
+
 /** Deterministic simulator shared by demo and integration fixtures. Synthetic route and zero-based altitude; never device GPS. */
 fun simulatedMeasurement(step: Int, receivedAtMs: Long): GasSample {
     val wave = sin(step / 8.0).toFloat()
     return GasSample(receivedAtMs, 650f + 160f * wave,
         aircraftPosition = AircraftPosition(
-            latitude = 9.93 + 0.001 * sin(step / 60.0),
-            longitude = -84.08 + 0.001 * (1 - cos(step / 60.0)),
+            latitude = SIM_CENTER_LAT + SIM_RADIUS_DEG * sin(step / 60.0),
+            longitude = SIM_CENTER_LON + SIM_RADIUS_DEG / cos(Math.toRadians(SIM_CENTER_LAT)) * cos(step / 60.0),
             receivedAtMs = receivedAtMs, ageAtSampleMs = 0, signalLevel = 4,
             altitudeM = 30.0 * (1 - cos(step / 30.0)), source = "simulado",
         ),

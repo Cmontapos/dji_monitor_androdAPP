@@ -167,16 +167,17 @@ se verificaron. Sin dispositivos ADB conectados; la prueba física queda pendien
 
 ## Historial de Actualizaciones (Updates)
 
-### v0.5.0 — Planificada: Mapa OpenStreetMap (Osmdroid)
+### v0.5.0 — Implementada: Mapa OpenStreetMap (Osmdroid)
 
 * **Mapa OSM como fondo georreferenciado** en la pestaña **Ruta y altura**, debajo del Canvas existente. Sin clave de API ni Google Play Services.
-  * **Con internet**: el `MapView` descarga y muestra teselas OSM/Mapnik en tiempo real; Osmdroid las cachea automáticamente en `files/osmdroid/` para usos futuros.
+  * **Con internet**: `OsmBackground.kt` carga teselas OSM/Mapnik vía `AndroidView { MapView }`. Osmdroid las cachea en `files/osmdroid/tiles/` automáticamente.
   * **Sin internet**: fondo gris. La ruta, el marcador Home, los puntos máximos y la inspección táctil siguen funcionando porque son Canvas, independientes del mapa base.
-  * `build.gradle.kts`: `org.osmdroid:osmdroid-android:6.1.20`.
-  * `AndroidManifest.xml`: permisos `INTERNET` y `ACCESS_NETWORK_STATE`.
-  * `RouteScreen.kt`: `Box` con `AndroidView { MapView }` como primera capa y Canvas encima.
-  * `RouteGeometry.kt`: exponer bounding box lat/lon para centrar el `MapView` en las muestras actuales.
-  * La precarga explícita de tiles para garantizar offline antes de salir al campo se evaluará en una versión posterior.
+  * `OsmBackground.kt`: nuevo archivo. Composable pasivo que recibe un `GeoWindow` y mueve el `MapView` para que coincida con el viewport del Canvas. Los gestos táctiles están desactivados en el mapa (solo el Canvas los recibe). Incluye crédito `© OpenStreetMap contributors`.
+  * `RouteScreen.kt` (línea 150): `OsmBackground(geoWindow, Modifier.matchParentSize())` dentro de un `Box`, Canvas encima.
+  * `RouteScreen.kt` (líneas 113–121): `geoWindow` calculado en tiempo real a partir de la proyección inversa del viewport del Canvas → `GeoWindow(north, south, east, west)`.
+  * `build.gradle.kts`: `org.osmdroid:osmdroid-android:6.1.20` agregado.
+  * `AndroidManifest.xml`: permisos `INTERNET` y `ACCESS_NETWORK_STATE` agregados.
+  * La precarga explícita de tiles para garantizar offline antes de salir al campo queda pendiente.
 
 ### v0.4.3 (2026-09-30) — Implementada
 

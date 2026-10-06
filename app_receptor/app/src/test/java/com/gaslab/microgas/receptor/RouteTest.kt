@@ -12,7 +12,7 @@ class RouteTest {
     @Test fun simulatorHeightSurvivesParsingExportAndArchive() {
         val m = sample()
         assertEquals(0.0, m.altitudeM!!, 0.0)
-        assertEquals(9.93, m.latitude!!, 0.0)
+        assertEquals(10.197183, m.latitude!!, 0.0)
         val memory = StringWriter(); MeasurementRepository.exportCsv(listOf(m), memory)
         val rows = memory.toString().trimEnd().lines().map { it.split(',') }
         assertEquals("0.0", rows[1][rows[0].indexOf("altura_m")])
